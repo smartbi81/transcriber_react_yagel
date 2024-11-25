@@ -88,99 +88,132 @@ const DictionaryEditor = () => {
     return fields;
   };
 
+
+  
   const loadDictionary = async () => {
-    const s3Client = new S3Client({
-      region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const s3Client = new S3Client({
+        region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
+        credentials: {
+          accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
+        }
+      });
+
+      const command = new GetObjectCommand({
+        Bucket: "product.transcriber",
+        Key: "_config/dictionary.csv"
+      });
+
+      const response = await s3Client.send(command);
+      const chunks = [];
+      const reader = response.Body.getReader();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
       }
-    });
-  
-    const command = new GetObjectCommand({
-      Bucket: "product.transcriber",
-      Key: "_config/dictionary.csv"
-    });
-  
-    const response = await s3Client.send(command);
-    const chunks = [];
-    const reader = response.Body.getReader();
-    
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
+
+      const buffer = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+      let position = 0;
+      
+      for (const chunk of chunks) {
+        buffer.set(chunk, position);
+        position += chunk.length;
+      }
+
+      // Remove BOM if present
+      const startOffset = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF ? 3 : 0;
+      const decoder = new TextDecoder('utf-8');
+      const content = decoder.decode(buffer.slice(startOffset));
+
+      const lines = content.split(/\r?\n/).filter(line => line.trim());
+      
+      // Skip header row
+      const parsedEntries = lines.slice(1).map(line => {
+        const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
+        const fields = [];
+        let match;
+        
+        while ((match = regex.exec(line))) {
+          const field = match[1] || match[2] || '';
+          fields.push(decodeURIComponent(field.trim()));
+        }
+
+        const [phrase, soundsLike, ipa, displayAs] = fields;
+        return {
+          phrase: phrase || '',
+          soundsLike: soundsLike || '',
+          ipa: ipa || '',
+          displayAs: displayAs || ''
+        };
+      });
+
+      setEntries(parsedEntries);
+      setIsEditing(true);
+    } catch (error) {
+      console.error('Error loading dictionary:', error);
+      setError('שגיאה בטעינת המילון');
+    } finally {
+      setIsLoading(false);
     }
-  
-    const buffer = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
-    let position = 0;
-    
-    for (const chunk of chunks) {
-      buffer.set(chunk, position);
-      position += chunk.length;
-    }
-  
-    // Remove BOM if present
-    const startOffset = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF ? 3 : 0;
-    const decoder = new TextDecoder('utf-8');
-    const content = decoder.decode(buffer.slice(startOffset));
-  
-    const lines = content.split(/\r?\n/).filter(line => line.trim());
-    
-    // Skip header row
-    const entries = lines.slice(1).map(line => {
-      const [phrase, soundsLike, ipa, displayAs] = parseCSVLine(line);
-      return {
-        phrase: phrase || '',
-        soundsLike: soundsLike || '',
-        ipa: ipa || '',
-        displayAs: displayAs || ''
-      };
-    });
-  
-    return entries;
   };
 
-  const saveDictionary = async (entries) => {
-    const BOM = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    const header = 'Phrase,SoundsLike,IPA,DisplayAs\n';
+  const saveDictionary = async () => {
+    setIsSaving(true);
+    setError('');
     
-    const csvLines = entries.map(entry => {
-      const fields = [
-        entry.phrase,
-        entry.soundsLike,
-        entry.ipa,
-        entry.displayAs
-      ].map(field => {
-        const encoded = encodeURIComponent(field);
-        return encoded.includes(',') ? `"${encoded}"` : encoded;
+    try {
+      const BOM = new Uint8Array([0xEF, 0xBB, 0xBF]);
+      const header = 'Phrase,SoundsLike,IPA,DisplayAs\n';
+      
+      const csvLines = entries.map(entry => {
+        const fields = [
+          entry.phrase,
+          entry.soundsLike,
+          entry.ipa,
+          entry.displayAs
+        ].map(field => {
+          const encoded = encodeURIComponent(field);
+          return encoded.includes(',') ? `"${encoded}"` : encoded;
+        });
+        return fields.join(',');
       });
-      return fields.join(',');
-    });
-  
-    const csvContent = header + csvLines.join('\n');
-    const encoder = new TextEncoder();
-    const encodedContent = new Uint8Array([
-      ...BOM,
-      ...encoder.encode(csvContent)
-    ]);
-  
-    const s3Client = new S3Client({
-      region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
-      }
-    });
-  
-    const command = new PutObjectCommand({
-      Bucket: "product.transcriber",
-      Key: "_config/dictionary.csv",
-      Body: encodedContent,
-      ContentType: 'text/csv; charset=utf-8'
-    });
-  
-    await s3Client.send(command);
+
+      const csvContent = header + csvLines.join('\n');
+      const encoder = new TextEncoder();
+      const encodedContent = new Uint8Array([
+        ...BOM,
+        ...encoder.encode(csvContent)
+      ]);
+
+      const s3Client = new S3Client({
+        region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
+        credentials: {
+          accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
+        }
+      });
+
+      const command = new PutObjectCommand({
+        Bucket: "product.transcriber",
+        Key: "_config/dictionary.csv",
+        Body: encodedContent,
+        ContentType: 'text/csv; charset=utf-8'
+      });
+
+      await s3Client.send(command);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving dictionary:', error);
+      setError('שגיאה בשמירת המילון');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSort = (key) => {
