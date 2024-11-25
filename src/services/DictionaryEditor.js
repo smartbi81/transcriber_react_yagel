@@ -94,7 +94,7 @@ const DictionaryEditor = () => {
   
       const response = await s3Client.send(command);
       
-      // Read the file content
+      // Use UTF-8 decoder for the response
       const chunks = [];
       const reader = response.Body.getReader();
       
@@ -104,7 +104,7 @@ const DictionaryEditor = () => {
         chunks.push(value);
       }
   
-      // Combine chunks
+      // Combine chunks into a single Uint8Array
       const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
       const buffer = new Uint8Array(totalLength);
       let position = 0;
@@ -114,20 +114,19 @@ const DictionaryEditor = () => {
         position += chunk.length;
       }
   
-      // Use iso-8859-8 encoding for Hebrew
-      const decoder = new TextDecoder('iso-8859-8');
+      // Decode using UTF-8
+      const decoder = new TextDecoder('utf-8');
       const content = decoder.decode(buffer);
   
-      // Split into lines and filter empty ones
+      // Parse CSV content
       const lines = content
         .split(/\r?\n/)
         .map(line => line.trim())
         .filter(line => line);
   
-      // Parse CSV format
-      const [header, ...dataRows] = lines;
-      const parsedEntries = dataRows.map(row => {
-        const [phrase, soundsLike, ipa, displayAs] = row.split(',').map(field => field.trim());
+      const parsedEntries = lines.slice(1).map(line => {
+        // Use CSV parsing function to handle quoted fields correctly
+        const [phrase, soundsLike, ipa, displayAs] = parseCSVLine(line);
         return {
           phrase: phrase || '',
           soundsLike: soundsLike || '',
@@ -151,7 +150,8 @@ const DictionaryEditor = () => {
     setError('');
   
     try {
-      // Create CSV content
+      // Create CSV content with UTF-8 BOM for Excel compatibility
+      const BOM = '\uFEFF';
       const header = 'Phrase,SoundsLike,IPA,DisplayAs';
       const csvLines = [
         header,
@@ -162,8 +162,8 @@ const DictionaryEditor = () => {
             entry.ipa,
             entry.displayAs
           ].map(field => {
-            // Escape fields that contain commas
-            if (field.includes(',')) {
+            // Escape fields that contain commas or quotes
+            if (field.includes(',') || field.includes('"')) {
               return `"${field.replace(/"/g, '""')}"`;
             }
             return field;
@@ -172,10 +172,10 @@ const DictionaryEditor = () => {
         })
       ];
   
-      const csvContent = csvLines.join('\n');
+      const csvContent = BOM + csvLines.join('\n');
       
-      // Encode with iso-8859-8
-      const encoder = new TextEncoder('iso-8859-8');
+      // Use UTF-8 encoding
+      const encoder = new TextEncoder();
       const encodedContent = encoder.encode(csvContent);
   
       const s3Client = new S3Client({
@@ -190,7 +190,7 @@ const DictionaryEditor = () => {
         Bucket: "product.transcriber",
         Key: "_config/dictionary.csv",
         Body: encodedContent,
-        ContentType: 'text/csv; charset=iso-8859-8'
+        ContentType: 'text/csv; charset=utf-8'
       });
   
       await s3Client.send(command);
