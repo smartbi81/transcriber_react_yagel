@@ -126,25 +126,32 @@ const DictionaryEditor = () => {
         position += chunk.length;
       }
 
-      // Remove BOM if present
+      // Check for and remove BOM
       const startOffset = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF ? 3 : 0;
       const decoder = new TextDecoder('utf-8');
       const content = decoder.decode(buffer.slice(startOffset));
 
-      const lines = content.split(/\r?\n/).filter(line => line.trim());
-      
-      // Skip header row
-      const parsedEntries = lines.slice(1).map(line => {
-        const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
-        const fields = [];
-        let match;
-        
-        while ((match = regex.exec(line))) {
-          const field = match[1] || match[2] || '';
-          fields.push(decodeURIComponent(field.trim()));
-        }
+      console.log('Raw content:', content); // For debugging
 
-        const [phrase, soundsLike, ipa, displayAs] = fields;
+      const lines = content
+        .split(/\r?\n/)
+        .filter(line => line.trim())
+        .map(line => {
+          // Remove any BOM characters that might appear in the line
+          return line.replace(/^\uFEFF/, '');
+        });
+
+      const parsedEntries = lines.slice(1).map(line => {
+        // Split by comma but preserve commas within quotes
+        const fields = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+        
+        // Clean up the fields
+        const cleanFields = fields.map(field => {
+          // Remove quotes and clean up doubled quotes
+          return field.replace(/^"|"$/g, '').replace(/""/g, '"').trim();
+        });
+
+        const [phrase, soundsLike, ipa, displayAs] = cleanFields;
         return {
           phrase: phrase || '',
           soundsLike: soundsLike || '',
@@ -153,6 +160,7 @@ const DictionaryEditor = () => {
         };
       });
 
+      console.log('Parsed entries:', parsedEntries); // For debugging
       setEntries(parsedEntries);
       setIsEditing(true);
     } catch (error) {
