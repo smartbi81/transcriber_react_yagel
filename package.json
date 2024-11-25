@@ -17,7 +17,9 @@
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
     "uuid": "^11.0.3",
-    "web-streams-polyfill": "^3.2.1"
+    "web-streams-polyfill": "^3.2.1",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
   },
   "scripts": {
     "start": "react-scripts start",
