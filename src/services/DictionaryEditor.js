@@ -1,13 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-
-const debugBuffer = (buffer) => {
-    console.log('Buffer content (first 100 bytes):', 
-      Array.from(buffer.slice(0, 100))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join(' ')
-    );
-  };
+import React, { useState, useMemo } from 'react';
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 
 const LoadingSpinner = () => (
   <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
@@ -17,48 +10,32 @@ const LoadingSpinner = () => (
 );
 
 const CloseIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18"></line>
     <line x1="6" y1="6" x2="18" y2="18"></line>
   </svg>
 );
 
 const SearchIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
 );
 
 const PlusIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19"></line>
     <line x1="5" y1="12" x2="19" y2="12"></line>
   </svg>
 );
 
 const SortIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M7 15l5 5 5-5"/>
     <path d="M7 9l5-5 5 5"/>
   </svg>
 );
-
-function parseCSVLine(line) {
-    // This regex matches either a quoted field or an unquoted field
-    const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
-    const fields = [];
-    let match;
-    
-    while ((match = regex.exec(line))) {
-      // If the first capturing group exists, use it (quoted field)
-      // Otherwise use the second group (unquoted field)
-      fields.push((match[1] || match[2] || '').trim());
-    }
-    
-    return fields;
-  }
-
 
 const DictionaryEditor = () => {
   const [isEditing, setIsEditing] = useState(false);
@@ -75,113 +52,82 @@ const DictionaryEditor = () => {
     displayAs: ''
   });
 
-  const parseCSVLine = (line) => {
-    const regex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
-    const fields = [];
-    let match;
-    
-    while ((match = regex.exec(line))) {
-      const field = match[1] || match[2] || '';
-      fields.push(decodeURIComponent(field.trim()));
+  const ddbClient = useMemo(() => new DynamoDBClient({
+    region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
     }
-    
-    return fields;
-  };
+  }), []);
 
+  const docClient = useMemo(() => DynamoDBDocumentClient.from(ddbClient), [ddbClient]);
 
-  
   const loadDictionary = async () => {
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      const s3Client = new S3Client({
-        region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
-        credentials: {
-          accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
-        }
-      });
-  
-      const command = new GetObjectCommand({
-        Bucket: "product.transcriber",
-        Key: "_config/dictionary.csv"
-      });
-  
-      const response = await s3Client.send(command);
-      const content = await response.Body.transformToByteArray();
-      
-      // Handle BOM and decode UTF-8
-      const textDecoder = new TextDecoder('utf-8');
-      const text = textDecoder.decode(content.slice(content[0] === 0xEF ? 3 : 0));
-      
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
-      const parsedEntries = lines.slice(1).map(line => {
-        const fields = parseCSVLine(line);
-        return {
-          phrase: decodeURIComponent(fields[0] || ''),
-          soundsLike: decodeURIComponent(fields[1] || ''),
-          ipa: decodeURIComponent(fields[2] || ''),
-          displayAs: decodeURIComponent(fields[3] || '')
-        };
-      });
-  
-      setEntries(parsedEntries);
+  setIsLoading(true);
+  try {
+    const response = await docClient.send(new ScanCommand({
+      TableName: "transcriber-medical",
+      Select: "ALL_ATTRIBUTES"
+    }));
+
+    console.log('Response:', response);
+    console.log('Items:', response.Items);
+
+    if (response.Items?.length) {
+      setEntries(response.Items);
       setIsEditing(true);
-    } catch (error) {
-      console.error('Error loading dictionary:', error);
-      setError('שגיאה בטעינת המילון');
-    } finally {
-      setIsLoading(false);
+    } else {
+      setError('No items found in table');
     }
-  };
-  
+  } catch (error) {
+    console.error('Error:', error);
+    setError('Error: ' + error.message);
+  }
+  setIsLoading(false);
+};
+
   const saveDictionary = async () => {
     setIsSaving(true);
-    setError('');
-    
     try {
-      const BOM = new Uint8Array([0xEF, 0xBB, 0xBF]);
-      const header = 'Phrase,SoundsLike,IPA,DisplayAs\n';
-      
-      const csvLines = entries.map(entry => {
-        const fields = [
-          encodeURIComponent(entry.phrase),
-          encodeURIComponent(entry.soundsLike),
-          encodeURIComponent(entry.ipa),
-          encodeURIComponent(entry.displayAs)
-        ].map(field => field.includes(',') ? `"${field}"` : field);
-        return fields.join(',');
-      });
-  
-      const csvContent = header + csvLines.join('\n');
-      const encoder = new TextEncoder();
-      const encodedContent = new Uint8Array([...BOM, ...encoder.encode(csvContent)]);
-  
-      const s3Client = new S3Client({
-        region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
-        credentials: {
-          accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
-        }
-      });
-  
-      const command = new PutObjectCommand({
-        Bucket: "product.transcriber",
-        Key: "_config/dictionary.csv",
-        Body: encodedContent,
-        ContentType: 'text/csv; charset=utf-8'
-      });
-  
-      await s3Client.send(command);
+      await Promise.all(entries.map(entry =>
+        docClient.send(new PutCommand({
+          TableName: "transcriber-medical",
+          Item: entry
+        }))
+      ));
       setIsEditing(false);
     } catch (error) {
-      console.error('Error saving dictionary:', error);
+      console.error('Error:', error);
       setError('שגיאה בשמירת המילון');
-    } finally {
-      setIsSaving(false);
     }
+    setIsSaving(false);
   };
+
+  const deleteEntry = async (index) => {
+  const entry = entries[index];
+  try {
+    console.log('Deleting entry:', entry);
+
+    await docClient.send(new DeleteCommand({
+      TableName: "transcriber-medical",
+      Key: {
+        Phrase: entry.Phrase,
+        DisplayAs: entry.DisplayAs  // Adding composite key if needed
+      }
+    }));
+
+    const newEntries = [...entries];
+    newEntries.splice(index, 1);
+    setEntries(newEntries);
+  } catch (error) {
+    console.error('Delete request details:', {
+      tableName: "transcriber-medical",
+      key: entry
+    });
+    console.error('Error:', error);
+    setError('שגיאה במחיקת רשומה');
+  }
+};
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -193,16 +139,16 @@ const DictionaryEditor = () => {
 
   const filteredAndSortedEntries = useMemo(() => {
     let result = [...entries];
-    
+
     if (searchTerm) {
       const lowercasedSearch = searchTerm.toLowerCase();
       result = result.filter(entry =>
-        Object.values(entry).some(value => 
-          value.toLowerCase().includes(lowercasedSearch)
+        Object.values(entry).some(value =>
+          value?.toLowerCase().includes(lowercasedSearch)
         )
       );
     }
-    
+
     if (sortConfig.key) {
       result.sort((a, b) => {
         if (a[sortConfig.key] < b[sortConfig.key]) {
@@ -214,27 +160,38 @@ const DictionaryEditor = () => {
         return 0;
       });
     }
-    
+
     return result;
   }, [entries, searchTerm, sortConfig]);
 
-  const addNewEntry = () => {
-    if (newEntry.phrase && newEntry.displayAs) {
-      setEntries([...entries, newEntry]);
+  const addNewEntry = async () => {
+  if (newEntry.phrase && newEntry.displayAs) {
+    try {
+      const item = {
+        Phrase: newEntry.phrase,
+        SoundsLike: newEntry.soundsLike || '',
+        IPA: newEntry.ipa || '',
+        DisplayAs: newEntry.displayAs
+      };
+
+      await docClient.send(new PutCommand({
+        TableName: "transcriber-medical",
+        Item: item
+      }));
+
+      setEntries([...entries, item]);
       setNewEntry({
         phrase: '',
         soundsLike: '',
         ipa: '',
         displayAs: ''
       });
+    } catch (error) {
+      console.error('Error:', error);
+      setError('שגיאה בהוספת רשומה');
     }
-  };
-
-  const deleteEntry = (index) => {
-    const newEntries = [...entries];
-    newEntries.splice(index, 1);
-    setEntries(newEntries);
-  };
+  }
+};
 
   return (
     <div className="relative">
@@ -258,7 +215,7 @@ const DictionaryEditor = () => {
           <div className="bg-white rounded-lg p-6 w-full max-w-6xl h-[90vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">עריכת מילון</h3>
-              <button 
+              <button
                 onClick={() => setIsEditing(false)}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -378,21 +335,21 @@ const DictionaryEditor = () => {
                 </thead>
                 <tbody>
                   {filteredAndSortedEntries.map((entry, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="text-right p-4 border" dir="rtl">{entry.phrase}</td>
-                      <td className="text-right p-4 border" dir="rtl">{entry.soundsLike}</td>
-                      <td className="text-left p-4 border">{entry.ipa}</td>
-                      <td className="text-right p-4 border" dir="rtl">{entry.displayAs}</td>
-                      <td className="p-4 border">
-                        <button
-                          onClick={() => deleteEntry(index)}
-                          className="p-1 text-red-500 hover:text-red-700 rounded"
-                        >
-                          <CloseIcon />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="text-right p-4 border" dir="rtl">{entry.Phrase}</td>
+                    <td className="text-right p-4 border" dir="rtl">{entry.SoundsLike || ''}</td>
+                    <td className="text-left p-4 border">{entry.IPA || ''}</td>
+                    <td className="text-right p-4 border" dir="rtl">{entry.DisplayAs}</td>
+                    <td className="p-4 border">
+                      <button
+                        onClick={() => deleteEntry(index)}
+                        className="p-1 text-red-500 hover:text-red-700 rounded"
+                      >
+                        <CloseIcon />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
                 </tbody>
               </table>
             </div>
