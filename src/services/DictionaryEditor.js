@@ -102,65 +102,65 @@ const DictionaryEditor = () => {
           secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
         }
       });
-
+  
       const command = new GetObjectCommand({
         Bucket: "product.transcriber",
         Key: "_config/dictionary.csv"
       });
-
+  
       const response = await s3Client.send(command);
-      const chunks = [];
-      const reader = response.Body.getReader();
       
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-      }
-
-      const buffer = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
-      let position = 0;
+      // Read the response as a Uint8Array
+      let content = await response.Body.transformToByteArray();
       
-      for (const chunk of chunks) {
-        buffer.set(chunk, position);
-        position += chunk.length;
+      // Check for BOM and remove if present
+      if (content[0] === 0xEF && content[1] === 0xBB && content[2] === 0xBF) {
+        content = content.slice(3);
       }
-
-      // Check for and remove BOM
-      const startOffset = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF ? 3 : 0;
+      
+      // Decode as UTF-8
       const decoder = new TextDecoder('utf-8');
-      const content = decoder.decode(buffer.slice(startOffset));
-
-      console.log('Raw content:', content); // For debugging
-
-      const lines = content
-        .split(/\r?\n/)
-        .filter(line => line.trim())
-        .map(line => {
-          // Remove any BOM characters that might appear in the line
-          return line.replace(/^\uFEFF/, '');
-        });
-
+      const text = decoder.decode(content);
+      
+      // Parse CSV, splitting on newlines and handling quoted fields
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      
+      // Process each line after the header
       const parsedEntries = lines.slice(1).map(line => {
-        // Split by comma but preserve commas within quotes
-        const fields = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+        let fields = [];
+        let field = '';
+        let inQuotes = false;
         
-        // Clean up the fields
-        const cleanFields = fields.map(field => {
-          // Remove quotes and clean up doubled quotes
-          return field.replace(/^"|"$/g, '').replace(/""/g, '"').trim();
-        });
-
-        const [phrase, soundsLike, ipa, displayAs] = cleanFields;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          
+          if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              field += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === ',' && !inQuotes) {
+            fields.push(field);
+            field = '';
+          } else {
+            field += char;
+          }
+        }
+        fields.push(field); // Push the last field
+        
+        // Clean up fields
+        fields = fields.map(f => f.trim().replace(/^"|"$/g, ''));
+        
         return {
-          phrase: phrase || '',
-          soundsLike: soundsLike || '',
-          ipa: ipa || '',
-          displayAs: displayAs || ''
+          phrase: fields[0] || '',
+          soundsLike: fields[1] || '',
+          ipa: fields[2] || '',
+          displayAs: fields[3] || ''
         };
       });
-
-      console.log('Parsed entries:', parsedEntries); // For debugging
+  
       setEntries(parsedEntries);
       setIsEditing(true);
     } catch (error) {
