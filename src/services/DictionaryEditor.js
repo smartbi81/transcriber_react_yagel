@@ -95,14 +95,6 @@ const DictionaryEditor = () => {
     setError('');
     
     try {
-      const s3Client = new S3Client({
-        region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
-        credentials: {
-          accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
-        }
-      });
-  
       const command = new GetObjectCommand({
         Bucket: "product.transcriber",
         Key: "_config/dictionary.csv"
@@ -111,29 +103,27 @@ const DictionaryEditor = () => {
       const response = await s3Client.send(command);
       const content = await response.Body.transformToByteArray();
       
-      // Handle BOM and decode UTF-8
-      const textDecoder = new TextDecoder('utf-8');
-      const text = textDecoder.decode(content.slice(content[0] === 0xEF ? 3 : 0));
+      const decoder = new TextDecoder('utf-8');
+      const text = '\uFEFF' + decoder.decode(content);
       
       const lines = text.split(/\r?\n/).filter(line => line.trim());
       const parsedEntries = lines.slice(1).map(line => {
         const fields = parseCSVLine(line);
         return {
-          phrase: decodeURIComponent(fields[0] || ''),
-          soundsLike: decodeURIComponent(fields[1] || ''),
-          ipa: decodeURIComponent(fields[2] || ''),
-          displayAs: decodeURIComponent(fields[3] || '')
+          phrase: fields[0] || '',
+          soundsLike: fields[1] || '',
+          ipa: fields[2] || '',
+          displayAs: fields[3] || ''
         };
       });
   
       setEntries(parsedEntries);
       setIsEditing(true);
     } catch (error) {
-      console.error('Error loading dictionary:', error);
+      console.error('Error:', error);
       setError('שגיאה בטעינת המילון');
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   };
   
   const saveDictionary = async () => {
