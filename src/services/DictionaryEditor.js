@@ -109,55 +109,20 @@ const DictionaryEditor = () => {
       });
   
       const response = await s3Client.send(command);
+      const content = await response.Body.transformToByteArray();
       
-      // Read the response as a Uint8Array
-      let content = await response.Body.transformToByteArray();
+      // Handle BOM and decode UTF-8
+      const textDecoder = new TextDecoder('utf-8');
+      const text = textDecoder.decode(content.slice(content[0] === 0xEF ? 3 : 0));
       
-      // Check for BOM and remove if present
-      if (content[0] === 0xEF && content[1] === 0xBB && content[2] === 0xBF) {
-        content = content.slice(3);
-      }
-      
-      // Decode as UTF-8
-      const decoder = new TextDecoder('utf-8');
-      const text = decoder.decode(content);
-      
-      // Parse CSV, splitting on newlines and handling quoted fields
       const lines = text.split(/\r?\n/).filter(line => line.trim());
-      
-      // Process each line after the header
       const parsedEntries = lines.slice(1).map(line => {
-        let fields = [];
-        let field = '';
-        let inQuotes = false;
-        
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          
-          if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-              field += '"';
-              i++;
-            } else {
-              inQuotes = !inQuotes;
-            }
-          } else if (char === ',' && !inQuotes) {
-            fields.push(field);
-            field = '';
-          } else {
-            field += char;
-          }
-        }
-        fields.push(field); // Push the last field
-        
-        // Clean up fields
-        fields = fields.map(f => f.trim().replace(/^"|"$/g, ''));
-        
+        const fields = parseCSVLine(line);
         return {
-          phrase: fields[0] || '',
-          soundsLike: fields[1] || '',
-          ipa: fields[2] || '',
-          displayAs: fields[3] || ''
+          phrase: decodeURIComponent(fields[0] || ''),
+          soundsLike: decodeURIComponent(fields[1] || ''),
+          ipa: decodeURIComponent(fields[2] || ''),
+          displayAs: decodeURIComponent(fields[3] || '')
         };
       });
   
@@ -170,7 +135,7 @@ const DictionaryEditor = () => {
       setIsLoading(false);
     }
   };
-
+  
   const saveDictionary = async () => {
     setIsSaving(true);
     setError('');
@@ -181,24 +146,18 @@ const DictionaryEditor = () => {
       
       const csvLines = entries.map(entry => {
         const fields = [
-          entry.phrase,
-          entry.soundsLike,
-          entry.ipa,
-          entry.displayAs
-        ].map(field => {
-          const encoded = encodeURIComponent(field);
-          return encoded.includes(',') ? `"${encoded}"` : encoded;
-        });
+          encodeURIComponent(entry.phrase),
+          encodeURIComponent(entry.soundsLike),
+          encodeURIComponent(entry.ipa),
+          encodeURIComponent(entry.displayAs)
+        ].map(field => field.includes(',') ? `"${field}"` : field);
         return fields.join(',');
       });
-
+  
       const csvContent = header + csvLines.join('\n');
       const encoder = new TextEncoder();
-      const encodedContent = new Uint8Array([
-        ...BOM,
-        ...encoder.encode(csvContent)
-      ]);
-
+      const encodedContent = new Uint8Array([...BOM, ...encoder.encode(csvContent)]);
+  
       const s3Client = new S3Client({
         region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
         credentials: {
@@ -206,14 +165,14 @@ const DictionaryEditor = () => {
           secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
         }
       });
-
+  
       const command = new PutObjectCommand({
         Bucket: "product.transcriber",
         Key: "_config/dictionary.csv",
         Body: encodedContent,
         ContentType: 'text/csv; charset=utf-8'
       });
-
+  
       await s3Client.send(command);
       setIsEditing(false);
     } catch (error) {
