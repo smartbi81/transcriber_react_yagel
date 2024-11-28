@@ -128,18 +128,35 @@ class S3Service {
 
   async uploadMedia(file, sessionId) {
     try {
-      const fileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // Sanitize filename
+      const fileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+
+      console.log('Region:', process.env.REACT_APP_AWS_REGION);
+      console.log('Has Access Key:', !!process.env.REACT_APP_AWS_ACCESS_KEY_ID);
+      console.log('Has Secret Key:', !!process.env.REACT_APP_AWS_SECRET_ACCESS_KEY);
       
-      // Create a presigned URL for the upload
+      // Verify the file and sessionId
+      if (!file || !sessionId) {
+        throw new Error('Missing required parameters');
+      }
+  
+      // Log the file details for debugging
+      console.log('Uploading file:', {
+        type: file.type,
+        size: file.size,
+        name: fileName
+      });
+  
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: `media-loads/${sessionId}`,
         ContentType: file.type
       });
-
+  
       const signedUrl = await getSignedUrl(this.client, command, { expiresIn: 3600 });
-
-      // Use fetch to upload directly to S3 using the presigned URL
+      
+      // Log the signed URL (remove in production)
+      console.log('Generated signed URL:', signedUrl);
+  
       const response = await fetch(signedUrl, {
         method: 'PUT',
         body: file,
@@ -147,19 +164,23 @@ class S3Service {
           'Content-Type': file.type
         }
       });
-
+  
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
-
-      console.log(`Media file uploaded successfully for session: ${sessionId}`);
+  
       return {
         success: true,
         key: `media-loads/${sessionId}`,
         sessionId: sessionId
       };
     } catch (error) {
-      console.error('Error uploading media file:', error);
+      console.error('Detailed upload error:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       throw error;
     }
   }
