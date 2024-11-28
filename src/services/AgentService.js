@@ -156,7 +156,7 @@ export const aiAgentClean = async (sessionId, onProgress) => {
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 3000,
       temperature: 0,
-      system: systemPrompt,
+      system: ".התפקיד שלך לנקות את הטקסט ולשמור עליו כמו שהוא בצורה הגולמית שלו, אל תוסיף הקדמה בהתחה וסיכום סוף. הדבר שצרי לשנות:1. סימני פיסוק לדוגמא נקודותיים יוחלף ל :. 2.מספרים נומרים כשאפשר לדוגמא: חמישים יוחלף ל50",
       messages: [
         {
           role: "user",
