@@ -1,5 +1,153 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import TextReplacement from './TextReplacement';
+
+async function applyMedicalReplacements(text) {
+  try {
+    // Get dictionary entries from DynamoDB
+    const dictionary = await getMedicalDictionary();
+
+    // Create a map of phrases to their display values
+    const replacementMap = new Map();
+    dictionary.forEach(entry => {
+      if (entry.Phrase && entry.DisplayAs) {
+        replacementMap.set(entry.Phrase.toLowerCase(), entry.DisplayAs);
+      }
+    });
+
+    // Sort phrases by length (longest first) to handle overlapping terms
+    const sortedPhrases = Array.from(replacementMap.keys()).sort((a, b) => b.length - a.length);
+
+    let processedText = text;
+    let replacements = [];
+    let currentPosition = 0;
+
+    // First pass: collect all replacements with their positions
+    for (const phrase of sortedPhrases) {
+      const lowerText = processedText.toLowerCase();
+      let startIndex = 0;
+
+      while ((startIndex = lowerText.indexOf(phrase, startIndex)) !== -1) {
+        const endIndex = startIndex + phrase.length;
+        const originalPhrase = processedText.substring(startIndex, endIndex);
+        const replacement = replacementMap.get(phrase);
+
+        // Store replacement information
+        replacements.push({
+          start: currentPosition + startIndex,
+          end: currentPosition + endIndex,
+          original: originalPhrase,
+          replacement: replacement
+        });
+
+        startIndex = endIndex;
+      }
+    }
+
+    // Sort replacements by start position (reverse order)
+    replacements.sort((a, b) => b.start - a.start);
+
+    // Apply replacements with HTML markup
+    for (const rep of replacements) {
+      processedText =
+        processedText.substring(0, rep.start) +
+        `<span style="color: red;" title="${rep.original}">${rep.replacement}</span>` +
+        processedText.substring(rep.end);
+    }
+
+    return {
+      html: processedText,
+      replacements: replacements
+    };
+  } catch (error) {
+    console.error('Error applying medical replacements:', error);
+    throw new Error(`Failed to apply medical replacements: ${error.message}`);
+  }
+}
+
+async function getMedicalDictionary() {
+  const ddbClient = new DynamoDBClient({
+    region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
+    }
+  });
+
+  const docClient = DynamoDBDocumentClient.from(ddbClient);
+
+  try {
+    const response = await docClient.send(new ScanCommand({
+      TableName: "transcriber-medical",
+      Select: "ALL_ATTRIBUTES"
+    }));
+
+    return response.Items || [];
+  } catch (error) {
+    console.error('Error fetching dictionary:', error);
+    throw new Error(`Failed to fetch medical dictionary: ${error.message}`);
+  }
+}
+
+function createReplacementMap(dictionary) {
+  // Create a map of phrases to their display values
+  const replacementMap = new Map();
+  dictionary.forEach(entry => {
+    if (entry.Phrase && entry.DisplayAs) {
+      replacementMap.set(entry.Phrase.toLowerCase(), entry.DisplayAs);
+    }
+  });
+  return replacementMap;
+}
+
+function processText(text, replacementMap) {
+  let processedText = text;
+  let replacements = [];
+  let currentPosition = 0;
+
+  // Sort phrases by length (longest first) to handle overlapping terms correctly
+  const sortedPhrases = Array.from(replacementMap.keys()).sort((a, b) => b.length - a.length);
+
+  for (const phrase of sortedPhrases) {
+    const lowerText = processedText.toLowerCase();
+    let startIndex = 0;
+
+    while ((startIndex = lowerText.indexOf(phrase, startIndex)) !== -1) {
+      const endIndex = startIndex + phrase.length;
+      const originalPhrase = processedText.substring(startIndex, endIndex);
+      const replacement = replacementMap.get(phrase);
+
+      // Store replacement information
+      replacements.push({
+        start: currentPosition + startIndex,
+        end: currentPosition + endIndex,
+        original: originalPhrase,
+        replacement: replacement
+      });
+
+      startIndex = endIndex;
+    }
+  }
+
+  // Sort replacements by start position (reverse order)
+  replacements.sort((a, b) => b.start - a.start);
+
+  // Apply replacements with HTML markup
+  let htmlText = text;
+  for (const rep of replacements) {
+    htmlText =
+      htmlText.substring(0, rep.start) +
+      `<span style="color: red;" title="${rep.original}">${rep.replacement}</span>` +
+      htmlText.substring(rep.end);
+  }
+
+  return {
+    html: htmlText,
+    replacements: replacements
+  };
+}
 
 // Helper function to save cleaned text to S3
 async function saveCleanedText(sessionId, text) {
@@ -12,20 +160,35 @@ async function saveCleanedText(sessionId, text) {
   });
 
   try {
+    // Process text with replacements
+    const processedResult = await applyMedicalReplacements(text);
+
+    // Save both the HTML and raw versions
+    const data = {
+      html: processedResult.html,
+      raw: text,
+      replacements: processedResult.replacements,
+      timestamp: new Date().toISOString()
+    };
+
     const command = new PutObjectCommand({
       Bucket: "product.transcriber",
-      Key: `clean-texts/${sessionId}.txt`,
-      Body: text,
-      ContentType: 'text/plain; charset=utf-8'
+      Key: `clean-texts/${sessionId}.json`,
+      Body: JSON.stringify(data),
+      ContentType: 'application/json'
     });
 
     await s3Client.send(command);
     console.log('Successfully saved cleaned text to S3');
+
+    return processedResult;
   } catch (error) {
     console.error('Error saving cleaned text:', error);
     throw new Error(`Failed to save cleaned text: ${error.message}`);
   }
 }
+
+export { saveCleanedText };
 
 // Helper function to get AI instructions from S3
 async function getAiInstructions() {
@@ -142,7 +305,6 @@ export const aiAgentClean = async (sessionId, onProgress) => {
 
     console.log('Initializing Bedrock client...');
     
-    // Initialize Bedrock client
     const bedrockClient = new BedrockRuntimeClient({
       region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
       credentials: {
@@ -151,7 +313,6 @@ export const aiAgentClean = async (sessionId, onProgress) => {
       }
     });
 
-    // Prepare request body for Claude
     const requestBody = {
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 3000,
@@ -160,19 +321,11 @@ export const aiAgentClean = async (sessionId, onProgress) => {
       messages: [
         {
           role: "user",
-          content: [
-            {
-              type: "text",
-              text: transcriptionContent
-            }
-          ]
+          content: [{ type: "text", text: transcriptionContent }]
         }
       ]
     };
 
-    console.log('Sending request to Bedrock...');
-
-    // Create streaming command for Bedrock
     const command = new InvokeModelWithResponseStreamCommand({
       modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
       body: JSON.stringify(requestBody),
@@ -180,35 +333,40 @@ export const aiAgentClean = async (sessionId, onProgress) => {
       accept: "application/json",
     });
 
-    // Invoke the model with streaming
     const response = await bedrockClient.send(command);
-    
-    // Handle the streaming response
     let fullResponse = '';
-    
+
     try {
       for await (const chunk of response.body) {
         const decoder = new TextDecoder();
         const chunkText = decoder.decode(chunk.chunk.bytes);
         const parsedChunk = JSON.parse(chunkText);
-        
+
         if (parsedChunk.type === 'content_block_delta') {
           const deltaText = parsedChunk.delta.text;
           fullResponse += deltaText;
-          
+
           // Call the progress callback with the accumulated text
           if (onProgress) {
             onProgress(fullResponse);
           }
         }
       }
-      
-      console.log('Streaming completed successfully');
-      
-      // Save the cleaned text to S3
+
+      console.log('Cleaning completed, applying medical replacements...');
+
+      // Apply medical term replacements to the cleaned text
+      const processedResult = await applyMedicalReplacements(fullResponse);
+
+      // Save the processed text to S3
       await saveCleanedText(sessionId, fullResponse);
-      
-      return fullResponse;
+
+      // Update the progress with the final processed HTML
+      if (onProgress) {
+        onProgress(processedResult.html);
+      }
+
+      return processedResult.html;
       
     } catch (streamError) {
       console.error('Error processing stream:', streamError);
@@ -282,16 +440,16 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
 
     // System prompt for summarization
     const systemPrompt = `You are a medical transcription assistant tasked with creating concise, accurate summaries of medical conversations.
-Your summaries should:
-1. Maintain all relevant medical information
-2. Organize information logically
-3. Use clear, professional language
-4. Preserve any specific numbers, measurements, or dosages
-5. Include key patient complaints, symptoms, and diagnoses
-6. Highlight any important actions or follow-ups
+    Your summaries should:
+    1. Maintain all relevant medical information
+    2. Organize information logically
+    3. Use clear, professional language
+    4. Preserve any specific numbers, measurements, or dosages
+    5. Include key patient complaints, symptoms, and diagnoses
+    6. Highlight any important actions or follow-ups
 
-Format the summary with appropriate headers and bullet points when relevant.
-Keep medical terminology intact but provide clear context.`;
+    Format the summary with appropriate headers and bullet points when relevant.
+    Keep medical terminology intact but provide clear context.`;
 
     // Prepare request body for Claude
     const requestBody = {
