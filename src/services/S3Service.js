@@ -155,7 +155,7 @@ class S3Service {
       console.log(`Media file uploaded successfully for session: ${sessionId}`);
       return {
         success: true,
-        key: `media/load/${sessionId}/${fileName}`,
+        key: `media-loads/${sessionId}`,
         sessionId: sessionId
       };
     } catch (error) {
