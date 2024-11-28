@@ -6,6 +6,7 @@ import S3Service, { createSessionId } from './services/S3Service';
 import { aiAgentClean, aiAgentSummary } from './services/AgentService';
 import DictionaryEditor from './services/DictionaryEditor';
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import TextDisplay from './services/TextDisplay';
 
 const MedicalTranscription = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -92,11 +93,11 @@ const MedicalTranscription = () => {
       let attempts = 0;
       const maxAttempts = 30; // 1 minute total (2 second intervals)
       const pollInterval = 2000;
-  
+
       const pollForTranscription = async () => {
         try {
           const transcriptionText = await S3Service.getFirstTranscription(sessionId);
-          
+
           if (transcriptionText) {
             setTranscription(transcriptionText);
             return true;
@@ -107,12 +108,12 @@ const MedicalTranscription = () => {
           return false;
         }
       };
-  
+
       const poll = async () => {
         if (attempts >= maxAttempts) {
           throw new Error('Timeout waiting for transcription');
         }
-  
+
         console.log(`Polling attempt ${attempts + 1}/${maxAttempts} for session ${sessionId}`);
         const found = await pollForTranscription();
         if (!found) {
@@ -121,7 +122,7 @@ const MedicalTranscription = () => {
           return poll();
         }
       };
-  
+
       await poll();
     } catch (error) {
       console.error('Error loading transcription:', error);
@@ -130,38 +131,38 @@ const MedicalTranscription = () => {
       setIsLoadingTranscription(false);
     }
   };
-  
+
   const handleFileSelect = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-  
+
     if (!file.type.startsWith('audio/')) {
       setError('Please select an audio file');
       return;
     }
-  
+
     setSelectedFileName(file.name);
     setUploadingFile(true);
     setError('');
-  
+
     try {
       const newSessionId = createSessionId();
       setSessionId(newSessionId);
-  
+
       // Upload file to S3
       await S3Service.uploadMedia(file, newSessionId);
-      
+
       // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      
+
       setSelectedFileName(`Uploaded: ${file.name}`);
       console.log('Starting transcription polling for session:', newSessionId);
-      
+
       // Start loading the transcription
       await loadTranscription(newSessionId);
-      
+
     } catch (error) {
       console.error('Error handling file:', error);
       setError('Failed to process file: ' + error.message);
@@ -197,18 +198,18 @@ const MedicalTranscription = () => {
           sampleRate: 16000,
           latencyHint: 'interactive'
         });
-        
+
         // Create gain node
         gainNodeRef.current = context.createGain();
         gainNodeRef.current.gain.value = 5.0;
-        
+
         // Create analyser node
         analyserRef.current = context.createAnalyser();
         analyserRef.current.fftSize = 2048;
-        
+
         await context.audioWorklet.addModule('/audio-processor.js');
         audioContextRef.current = context;
-        
+
         console.log('Audio context initialized with gain and analyser');
       }
       return true;
@@ -228,23 +229,23 @@ const MedicalTranscription = () => {
     try {
       const source = audioContextRef.current.createMediaStreamSource(stream);
       workletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
-      
+
       source.connect(workletNodeRef.current);
-      
+
       workletNodeRef.current.port.onmessage = (event) => {
         if (event.data.audioData) {
           const audioData = event.data.audioData;
           const stats = event.data.stats;
-          
+
           const buffer = Buffer.allocUnsafe(audioData.length * 2);
           for (let i = 0; i < audioData.length; i++) {
             buffer.writeInt16LE(audioData[i], i * 2);
           }
-          
+
           if (stats.activeFrames > 0) {
             audioQueue.push(buffer);
           }
-          
+
           setAudioLevel(Math.min(100, event.data.rms * 200));
         }
       };
@@ -256,7 +257,7 @@ const MedicalTranscription = () => {
               controller.close();
               return;
             }
-            
+
             if (audioQueue.length >= 2) {
               const combinedChunks = Buffer.concat(audioQueue.splice(0, 2));
               controller.enqueue(combinedChunks);
@@ -296,11 +297,11 @@ const MedicalTranscription = () => {
       });
 
       const response = await transcribeClient.send(command);
-      
+
       for await (const event of response.TranscriptResultStream) {
         if (event.TranscriptEvent?.Transcript?.Results?.[0]) {
           const result = event.TranscriptEvent.Transcript.Results[0];
-          
+
           if (result.Alternatives?.[0]) {
             const alternative = result.Alternatives[0];
             const newText = alternative.Transcript;
@@ -365,27 +366,27 @@ const MedicalTranscription = () => {
     console.log('Starting recording...');
     setError('');
     setIsProcessing(true);
-    
+
     try {
       const initialized = await initializeAudioContext();
       if (!initialized) return;
-  
+
       // Generate new session ID
       const newSessionId = createSessionId();
       setSessionId(newSessionId);
       recordedChunksRef.current = [];
-  
+
       console.log('Requesting microphone access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
           channelCount: 1,
           sampleRate: 16000
-        } 
+        }
       });
-  
+
       // Create MediaRecorder to save the audio
       mediaRecorderRef.current = new MediaRecorder(stream);
       mediaRecorderRef.current.ondataavailable = (event) => {
@@ -394,7 +395,7 @@ const MedicalTranscription = () => {
         }
       };
       mediaRecorderRef.current.start();
-  
+
       streamRef.current = stream;
       setIsRecording(true);
       await startTranscription(stream);
@@ -418,7 +419,7 @@ const MedicalTranscription = () => {
     console.log('Stopping recording...');
     setIsRecording(false);
     setIsProcessing(true);
-  
+
     try {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
@@ -426,17 +427,17 @@ const MedicalTranscription = () => {
           mediaRecorderRef.current.onstop = resolve;
         });
       }
-  
+
       // Create audio blob from recorded chunks
       if (recordedChunksRef.current.length > 0) {
         const audioBlob = new Blob(recordedChunksRef.current, { type: 'audio/wav' });
-        
+
         // Upload recording to S3
         await S3Service.uploadRecording(audioBlob, sessionId);
-        
+
         // Upload transcription to S3
         await S3Service.uploadTranscription(transcription, sessionId);
-        
+
         console.log('Successfully saved recording and transcription');
       }
     } catch (error) {
@@ -447,39 +448,39 @@ const MedicalTranscription = () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      
+
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
-      
+
       if (workletNodeRef.current) {
         workletNodeRef.current.disconnect();
         workletNodeRef.current = null;
       }
-      
+
       if (gainNodeRef.current) {
         gainNodeRef.current.disconnect();
         gainNodeRef.current = null;
       }
-      
+
       if (analyserRef.current) {
         analyserRef.current.disconnect();
         analyserRef.current = null;
       }
-      
+
       if (audioContextRef.current?.state === 'running') {
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
-      
+
       mediaRecorderRef.current = null;
       recordedChunksRef.current = [];
       setAudioLevel(0);
       setIsProcessing(false);
     }
   }, [sessionId, transcription]);
-  
+
 
   return (
     <div className="min-h-screen bg-blue-50 p-4 md:p-8">
@@ -563,7 +564,7 @@ const MedicalTranscription = () => {
         {isRecording && (
           <div className="mb-4">
             <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div 
+              <div
                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-200"
                 style={{ width: `${Math.min(100, audioLevel)}%` }}
               />
@@ -614,14 +615,8 @@ const MedicalTranscription = () => {
         </div>
 
         <div className="space-y-4">
-          <textarea
-            value={transcription}
-            readOnly
-            className="w-full h-64 p-4 border-2 border-blue-300 rounded-lg text-right focus:outline-none focus:border-blue-500"
-            dir="rtl"
-            placeholder="תמלול..."
-          />
-        </div>
+              <TextDisplay text={transcription} />
+            </div>
       </div>
     </div>
   );
