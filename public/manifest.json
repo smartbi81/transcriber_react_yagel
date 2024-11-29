@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "Medical Transcription",
+  "name": "Medical Transcription System",
   "icons": [
     {
       "src": "favicon.ico",
@@ -8,12 +8,17 @@
       "type": "image/x-icon"
     },
     {
-      "src": "logo192.png",
+      "src": "health_worker_form.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    },
+    {
+      "src": "health_worker_form_192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "logo512.png",
+      "src": "health_worker_form_512.png",
       "type": "image/png",
       "sizes": "512x512"
     }
