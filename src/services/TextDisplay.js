@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const TextDisplay = ({ text }) => {
   const [showCopy, setShowCopy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const contentRef = useRef(null);
+
+  // Auto-scroll effect
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    }
+  }, [text]);
 
   const handleCopy = async () => {
     try {
-      // Create a temporary div to handle HTML content
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = text;
       const textToCopy = tempDiv.textContent || tempDiv.innerText;
@@ -23,7 +30,7 @@ const TextDisplay = ({ text }) => {
     <div className="relative">
       {/* Header area with copy button */}
       <div
-        className="absolute top-0 left-0 right-0 h-8 flex justify-end items-center px-2"
+        className="absolute top-0 left-0 right-0 h-8 flex justify-end items-center px-2 z-10"
         onMouseEnter={() => setShowCopy(true)}
         onMouseLeave={() => setShowCopy(false)}
       >
@@ -52,13 +59,26 @@ const TextDisplay = ({ text }) => {
         )}
       </div>
 
-      {/* Text content */}
+      {/* Resizable text content */}
       <div
-        dangerouslySetInnerHTML={{ __html: text }}
-        className="w-full h-64 p-4 border-2 border-blue-300 rounded-lg text-right focus:outline-none focus:border-blue-500 overflow-auto"
-        dir="rtl"
-        style={{ whiteSpace: 'pre-wrap' }}
-      />
+        className="group relative h-64 w-full overflow-hidden"
+        style={{ resize: 'vertical' }}
+      >
+        <div
+          ref={contentRef}
+          dangerouslySetInnerHTML={{ __html: text }}
+          className="absolute inset-0 p-4 border-2 border-blue-300 rounded-lg text-right focus:outline-none focus:border-blue-500 overflow-auto bg-white"
+          dir="rtl"
+          style={{
+            whiteSpace: 'pre-wrap',
+          }}
+        />
+
+        {/* Left-side resize handle indicator */}
+        <div className="absolute bottom-0 right-2 w-4 h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+
+        </div>
+      </div>
     </div>
   );
 };
