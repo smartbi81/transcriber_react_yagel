@@ -393,7 +393,7 @@ async function getCleanedText(sessionId) {
     
     const command = new GetObjectCommand({
       Bucket: "product.transcriber",
-      Key: `clean-texts/${sessionId}.txt`
+      Key: `clean-texts/${sessionId}.json`
     });
 
     const response = await s3Client.send(command);
@@ -447,6 +447,7 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
     4. Preserve any specific numbers, measurements, or dosages
     5. Include key patient complaints, symptoms, and diagnoses
     6. Highlight any important actions or follow-ups
+    7. Answeer in detected language
 
     Format the summary with appropriate headers and bullet points when relevant.
     Keep medical terminology intact but provide clear context.`;
