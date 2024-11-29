@@ -575,6 +575,13 @@ const MedicalTranscription = () => {
           </div>
         )}
 
+      {(sessionId && !isRecording) && (
+                <AudioPlayer
+                  sessionId={sessionId}
+                  recordingType={selectedFileName ? 'upload' : 'recording'}
+                />
+              )}
+
         {/* AI Processing Controls */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <button
