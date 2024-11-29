@@ -12,20 +12,35 @@ async function saveCleanedText(sessionId, text) {
   });
 
   try {
+    // Process text with replacements
+    const processedResult = await applyMedicalReplacements(text);
+
+    // Save both the HTML and raw versions
+    const data = {
+      html: processedResult.html,
+      raw: text,
+      replacements: processedResult.replacements,
+      timestamp: new Date().toISOString()
+    };
+
     const command = new PutObjectCommand({
       Bucket: "product.transcriber",
-      Key: `clean-texts/${sessionId}.txt`,
-      Body: text,
-      ContentType: 'text/plain; charset=utf-8'
+      Key: `clean-texts/${sessionId}.json`,
+      Body: JSON.stringify(data),
+      ContentType: 'application/json'
     });
 
     await s3Client.send(command);
     console.log('Successfully saved cleaned text to S3');
+
+    return processedResult;
   } catch (error) {
     console.error('Error saving cleaned text:', error);
     throw new Error(`Failed to save cleaned text: ${error.message}`);
   }
 }
+
+export { saveCleanedText };
 
 // Helper function to get AI instructions from S3
 async function getAiInstructions() {
