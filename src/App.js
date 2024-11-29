@@ -4,6 +4,7 @@ import { FetchHttpHandler } from "@aws-sdk/fetch-http-handler";
 import { Buffer } from 'buffer';
 import S3Service, { createSessionId } from './services/S3Service';
 import { aiAgentClean, aiAgentSummary } from './services/AgentService';
+import AudioPlayer from './services/AudioPlayer';
 import DictionaryEditor from './services/DictionaryEditor';
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import TextDisplay from './services/TextDisplay';
