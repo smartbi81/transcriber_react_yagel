@@ -1,3 +1,13 @@
+# Transcriber App Release Notes
+
+| Version | Features |
+|---------|----------|
+| 5.0 | • Audio playback capabilities |
+| 4.0 | • Global dictionary for word corrections<br>• Copy button for transcribed text<br>• Auto-scaling text box<br>• Automatic scrolling during text load |
+| 3.0 | • AI-powered text summary generation |
+| 2.0 | • Real-time streaming transcription |
+| 1.0 | • Core audio file transcription<br>• Claude AI text cleanup<br>• Basic file handling |
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
