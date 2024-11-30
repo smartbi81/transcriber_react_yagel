@@ -137,8 +137,37 @@ const MedicalTranscription = () => {
     const file = event.target.files[0];
     if (!file) return;
 
-    if (!file.type.startsWith('audio/')) {
-      setError('Please select an audio file');
+    // List of supported audio MIME types including all MPEG variations
+    const supportedAudioTypes = [
+      'audio/mpeg',      // MP3/MPEG files
+      'audio/x-mpeg',    // Alternative MPEG MIME type
+      'video/mpeg',      // MPEG files sometimes use video MIME type
+      'audio/mpeg3',     // Alternative MPEG3 MIME type
+      'audio/x-mpeg3',   // Alternative MPEG3 MIME type
+      'audio/mp3',       // MP3 files
+      'audio/x-mp3',     // Alternative MP3 MIME type
+      'audio/mp4',       // M4A files
+      'audio/wav',       // WAV files
+      'audio/x-wav',     // Alternative WAV MIME type
+      'audio/webm',      // WebM audio
+      'audio/ogg',       // OGG files
+      'audio/aac',       // AAC files
+      'audio/x-m4a'      // Alternative M4A MIME type
+    ];
+
+    // Check if file type is directly supported
+    let isSupported = supportedAudioTypes.includes(file.type);
+
+    // If not directly supported, check file extension for .mpeg files
+    if (!isSupported && file.name) {
+      const extension = file.name.toLowerCase().split('.').pop();
+      if (extension === 'mpeg') {
+        isSupported = true;
+      }
+    }
+
+    if (!isSupported) {
+      setError('Please select a supported audio file (MPEG, MP3, WAV, M4A, WebM, OGG, AAC)');
       return;
     }
 
@@ -149,6 +178,14 @@ const MedicalTranscription = () => {
     try {
       const newSessionId = createSessionId();
       setSessionId(newSessionId);
+
+      // Log file information for debugging
+      console.log('Uploading file:', {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        extension: file.name.split('.').pop()
+      });
 
       // Upload file to S3
       await S3Service.uploadMedia(file, newSessionId);
@@ -170,7 +207,7 @@ const MedicalTranscription = () => {
     } finally {
       setUploadingFile(false);
     }
-  };
+};
 
   const transcribeClient = new TranscribeStreamingClient({
     region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
@@ -409,11 +446,8 @@ const MedicalTranscription = () => {
   };
 
   const clearTranscription = () => {
-    setTranscription('');
-    partialTranscriptRef.current = '';
-    completeTranscriptsRef.current = [];
-    currentSpeakerRef.current = null;
-    setError('');
+    // Refresh the page
+    window.location.reload();
   };
 
   const stopRecording = useCallback(async () => {
