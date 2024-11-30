@@ -657,7 +657,7 @@ const MedicalTranscription = () => {
         </div>
 
         <div className="space-y-4">
-              <TextDisplay text={transcription} />
+            <TextDisplay text={transcription} sessionId={sessionId} />
             </div>
       </div>
     </div>
