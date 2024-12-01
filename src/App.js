@@ -92,7 +92,7 @@ const MedicalTranscription = () => {
     
     try {
       let attempts = 0;
-      const maxAttempts = 60; // 2 minute total (2 second intervals)
+      const maxAttempts = 120; // 4 minute total (2 second intervals)
       const pollInterval = 2000;
 
       const pollForTranscription = async () => {
