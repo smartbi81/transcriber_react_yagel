@@ -1,21 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
-const TextDisplay = ({ text }) => {
+const TextDisplay = ({ text, sessionId }) => {
   const [showCopy, setShowCopy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [currentText, setCurrentText] = useState(text);
+  const [textType, setTextType] = useState('original');
   const contentRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // Auto-scroll effect
+  useEffect(() => {
+    setCurrentText(text);
+  }, [text]);
+
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
-  }, [text]);
+  }, [currentText]);
 
   const handleCopy = async () => {
     try {
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = text;
+      tempDiv.innerHTML = currentText;
       const textToCopy = tempDiv.textContent || tempDiv.innerText;
 
       await navigator.clipboard.writeText(textToCopy);
@@ -26,15 +34,59 @@ const TextDisplay = ({ text }) => {
     }
   };
 
+  const fetchTextFromS3 = async (type) => {
+    if (!sessionId) return;
+
+    setIsLoading(true);
+    setError('');
+
+    const s3Client = new S3Client({
+      region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.REACT_APP_AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.REACT_APP_AWS_SECRET_ACCESS_KEY
+      }
+    });
+
+    try {
+      const key = type === 'cleaned' 
+        ? `clean-texts/${sessionId}.json`
+        : `ai-summaries/${sessionId}.json`;
+
+      const command = new GetObjectCommand({
+        Bucket: "product.transcriber",
+        Key: key
+      });
+
+      const response = await s3Client.send(command);
+      const reader = response.Body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let result = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        result += decoder.decode(value, { stream: true });
+      }
+
+      const data = JSON.parse(result);
+      setCurrentText(type === 'cleaned' ? data.html : data.summary);
+      setTextType(type);
+    } catch (error) {
+      console.error(`Error fetching ${type} text:`, error);
+      setError(`Failed to load ${type} text`);
+      // Revert to original text on error
+      setCurrentText(text);
+      setTextType('original');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="relative">
-      {/* Header area with copy button */}
-      <div
-        className="absolute top-0 left-0 right-0 h-8 flex justify-end items-center px-2 z-10"
-        onMouseEnter={() => setShowCopy(true)}
-        onMouseLeave={() => setShowCopy(false)}
-      >
-        {showCopy && (
+      <div className="absolute top-0 left-0 right-0 h-8 flex justify-between items-center px-2 z-10 gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={handleCopy}
             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm transition-all duration-200 flex items-center gap-1"
@@ -56,28 +108,60 @@ const TextDisplay = ({ text }) => {
               </>
             )}
           </button>
-        )}
+          <button
+            onClick={() => {
+              if (textType === 'cleaned') {
+                setCurrentText(text);
+                setTextType('original');
+              } else {
+                fetchTextFromS3('cleaned');
+              }
+            }}
+            className={`bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm transition-all duration-200 
+              ${textType === 'cleaned' ? 'ring-2 ring-green-300' : ''}`}
+            disabled={isLoading}
+          >
+            טקסט מנוקה
+          </button>
+          <button
+            onClick={() => {
+              if (textType === 'summary') {
+                setCurrentText(text);
+                setTextType('original');
+              } else {
+                fetchTextFromS3('summary');
+              }
+            }}
+            className={`bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded-md text-sm transition-all duration-200
+              ${textType === 'summary' ? 'ring-2 ring-purple-300' : ''}`}
+            disabled={isLoading}
+          >
+            סיכום
+          </button>
+        </div>
       </div>
 
-      {/* Resizable text content */}
-      <div
-        className="group relative h-64 w-full overflow-hidden"
-        style={{ resize: 'vertical' }}
-      >
+      <div className="group relative h-64 w-full overflow-hidden" style={{ resize: 'vertical' }}>
+        {isLoading && (
+          <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          </div>
+        )}
+        {error && (
+          <div className="absolute top-12 left-0 right-0 text-red-500 text-center bg-red-100 p-2 z-20">
+            {error}
+          </div>
+        )}
         <div
           ref={contentRef}
-          dangerouslySetInnerHTML={{ __html: text }}
+          dangerouslySetInnerHTML={{ __html: currentText }}
           className="absolute inset-0 p-4 border-2 border-blue-300 rounded-lg text-right focus:outline-none focus:border-blue-500 overflow-auto bg-white"
           dir="rtl"
           style={{
             whiteSpace: 'pre-wrap',
+            marginTop: '2rem'
           }}
         />
-
-        {/* Left-side resize handle indicator */}
-        <div className="absolute bottom-0 right-2 w-4 h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-
-        </div>
       </div>
     </div>
   );

@@ -424,12 +424,25 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
   }
 
   try {
-    // Get the cleaned text content
-    const cleanedText = await getCleanedText(sessionId);
+    let textToSummarize;
+    
+    // Try to get cleaned text first
+    try {
+      const cleanedText = await getCleanedText(sessionId);
+      const parsedText = JSON.parse(cleanedText);
+      textToSummarize = parsedText.raw || parsedText.html;
+    } catch (error) {
+      console.log('Cleaned text not found, falling back to original transcription');
+      // If cleaned text isn't available, get original transcription
+      textToSummarize = await getTranscriptionContent(sessionId);
+    }
+
+    if (!textToSummarize) {
+      throw new Error('No text content found to summarize');
+    }
     
     console.log('Initializing Bedrock client for summary...');
     
-    // Initialize Bedrock client
     const bedrockClient = new BedrockRuntimeClient({
       region: process.env.REACT_APP_AWS_REGION || 'us-east-1',
       credentials: {
@@ -438,7 +451,6 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
       }
     });
 
-    // System prompt for summarization
     const systemPrompt = `You are a medical transcription assistant tasked with creating concise, accurate summaries of medical conversations.
     Your summaries should:
     1. Maintain all relevant medical information
@@ -447,12 +459,11 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
     4. Preserve any specific numbers, measurements, or dosages
     5. Include key patient complaints, symptoms, and diagnoses
     6. Highlight any important actions or follow-ups
-    7. Answeer in detected language
+    7. Answer in detected language
 
     Format the summary with appropriate headers and bullet points when relevant.
     Keep medical terminology intact but provide clear context.`;
 
-    // Prepare request body for Claude
     const requestBody = {
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 3000,
@@ -464,7 +475,7 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
           content: [
             {
               type: "text",
-              text: `Please provide a clear, structured summary of this medical conversation: \n\n${cleanedText}`
+              text: `Please provide a clear, structured summary of this medical conversation: \n\n${textToSummarize}`
             }
           ]
         }
@@ -473,7 +484,6 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
 
     console.log('Sending summary request to Bedrock...');
 
-    // Create streaming command for Bedrock
     const command = new InvokeModelWithResponseStreamCommand({
       modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
       body: JSON.stringify(requestBody),
@@ -481,10 +491,7 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
       accept: "application/json",
     });
 
-    // Invoke the model with streaming
     const response = await bedrockClient.send(command);
-    
-    // Handle the streaming response
     let fullResponse = '';
     
     try {
@@ -497,7 +504,6 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
           const deltaText = parsedChunk.delta.text;
           fullResponse += deltaText;
           
-          // Call the progress callback with the accumulated text
           if (onProgress) {
             onProgress(fullResponse);
           }
@@ -511,7 +517,7 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
         sessionId,
         timestamp: new Date().toISOString(),
         summary: fullResponse,
-        originalCleanText: cleanedText
+        originalText: textToSummarize
       };
 
       await saveToS3(

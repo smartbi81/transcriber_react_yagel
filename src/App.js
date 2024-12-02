@@ -92,7 +92,7 @@ const MedicalTranscription = () => {
     
     try {
       let attempts = 0;
-      const maxAttempts = 60; // 2 minute total (2 second intervals)
+      const maxAttempts = 120; // 4 minute total (2 second intervals)
       const pollInterval = 2000;
 
       const pollForTranscription = async () => {
@@ -439,7 +439,7 @@ const MedicalTranscription = () => {
       await startTranscription(stream);
     } catch (error) {
       console.error('Recording error:', error);
-      setError('Failed to start recording: ' + error.message);
+      // setError('Failed to start recording: ' + error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -520,9 +520,18 @@ const MedicalTranscription = () => {
   return (
     <div className="min-h-screen bg-blue-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-4 md:p-6">
-        <h1 className="text-2xl md:text-3xl text-blue-800 text-right border-b-2 border-blue-300 pb-4 mb-6">
-          👨‍⚕️ מערכת תמלול רפואי חכמה
-        </h1>
+        <div className="flex justify-between items-center border-b-2 border-blue-300 pb-4 mb-6">
+          <div className="flex items-center space-x-4">
+            <img 
+              src="https://eladsoft.com/wp-content/uploads/2022/04/Elad-logo-color.png" 
+              alt="Eladsoft Logo"
+              className="h-10 object-contain"
+            />
+          </div>
+          <h1 className="text-2xl md:text-3xl text-blue-800 text-right">
+            👨‍⚕️ מערכת תמלול חכמה
+          </h1>
+        </div>
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 text-right" role="alert">
@@ -657,7 +666,7 @@ const MedicalTranscription = () => {
         </div>
 
         <div className="space-y-4">
-              <TextDisplay text={transcription} />
+            <TextDisplay text={transcription} sessionId={sessionId} />
             </div>
       </div>
     </div>
