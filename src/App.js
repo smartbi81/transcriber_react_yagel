@@ -439,7 +439,7 @@ const MedicalTranscription = () => {
       await startTranscription(stream);
     } catch (error) {
       console.error('Recording error:', error);
-      // setError('Failed to start recording: ' + error.message);
+      // setError('Failed to start recording: ' + error.message); // Show error in console
     } finally {
       setIsProcessing(false);
     }
