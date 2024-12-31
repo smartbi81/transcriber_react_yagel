@@ -8,6 +8,7 @@ import AudioPlayer from './services/AudioPlayer';
 import DictionaryEditor from './services/DictionaryEditor';
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import TextDisplay from './services/TextDisplay';
+import TranscriptionConfig from './components/TranscriptionConfig';
 
 const MedicalTranscription = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -36,6 +37,9 @@ const MedicalTranscription = () => {
   const animationFrameRef = useRef(null);
 
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+
+  const [numSpeakers, setNumSpeakers] = useState(1);
+  const [language, setLanguage] = useState('he-IL');
 
   const handleCleanText = async () => {
     if (!sessionId) {
@@ -263,31 +267,31 @@ const MedicalTranscription = () => {
     const audioQueue = [];
     let accumulatedBytes = 0;
     let queueInterval;
-
+  
     try {
       const source = audioContextRef.current.createMediaStreamSource(stream);
       workletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
-
+  
       source.connect(workletNodeRef.current);
-
+  
       workletNodeRef.current.port.onmessage = (event) => {
         if (event.data.audioData) {
           const audioData = event.data.audioData;
           const stats = event.data.stats;
-
+  
           const buffer = Buffer.allocUnsafe(audioData.length * 2);
           for (let i = 0; i < audioData.length; i++) {
             buffer.writeInt16LE(audioData[i], i * 2);
           }
-
+  
           if (stats.activeFrames > 0) {
             audioQueue.push(buffer);
           }
-
+  
           setAudioLevel(Math.min(100, event.data.rms * 200));
         }
       };
-
+  
       const audioStream = new ReadableStream({
         start(controller) {
           queueInterval = setInterval(() => {
@@ -295,29 +299,30 @@ const MedicalTranscription = () => {
               controller.close();
               return;
             }
-
-            if (audioQueue.length >= 2) {
-              const combinedChunks = Buffer.concat(audioQueue.splice(0, 2));
-              controller.enqueue(combinedChunks);
-              accumulatedBytes += combinedChunks.length;
+  
+            if (audioQueue.length > 0) {
+              const chunk = audioQueue.shift();
+              controller.enqueue(chunk);
+              accumulatedBytes += chunk.length;
             }
-          }, 50);
+          }, 5); // Reduced interval for faster processing
         },
         cancel() {
           isStreaming = false;
           clearInterval(queueInterval);
         }
       });
-
+  
       const command = new StartStreamTranscriptionCommand({
-        LanguageCode: 'he-IL',
+        LanguageCode: language,
         MediaEncoding: 'pcm',
         MediaSampleRateHertz: 16000,
-        EnableSpeakerIdentification: true,
-        NumberOfParticipants: 2,
-        ShowSpeakerLabel: true,
+        EnableSpeakerIdentification: numSpeakers > 1,
+        NumberOfParticipants: numSpeakers,
+        ShowSpeakerLabel: numSpeakers > 1,
         EnablePartialResultsStabilization: true,
-        PartialResultsStability: 'high',
+        PartialResultsStability: 'low',
+        VocabularyName: 'transcriber-he-punctuation',
         AudioStream: async function* () {
           const reader = audioStream.getReader();
           try {
@@ -333,61 +338,60 @@ const MedicalTranscription = () => {
           }
         }()
       });
-
+  
       const response = await transcribeClient.send(command);
-
+  
+      // Initialize state with more efficient handling
+      let currentTranscript = '';
+      let lastPartialTimestamp = Date.now();
+      completeTranscriptsRef.current = [];
+      
       for await (const event of response.TranscriptResultStream) {
         if (event.TranscriptEvent?.Transcript?.Results?.[0]) {
           const result = event.TranscriptEvent.Transcript.Results[0];
-
+          
           if (result.Alternatives?.[0]) {
             const alternative = result.Alternatives[0];
-            const newText = alternative.Transcript;
-            let speakerLabel = null;
-
-            // Debug log to see the full response structure
-            console.log('Transcribe Response:', JSON.stringify(result, null, 2));
-
-            // Try to get speaker label from Items array
-            if (alternative.Items && alternative.Items.length > 0) {
-              // Find the first item with a speaker label
-              const speakerItem = alternative.Items.find(item => item.Speaker);
-              if (speakerItem) {
-                speakerLabel = `דובר ${speakerItem.Speaker}`;
+            const newText = alternative.Transcript || '';
+            
+            // Handle speaker labels
+            let speakerLabel = '';
+            if (numSpeakers > 1) {
+              if (alternative.Items?.length > 0) {
+                const speakerItem = alternative.Items.find(item => item.Speaker);
+                if (speakerItem) {
+                  speakerLabel = `[דובר ${speakerItem.Speaker}]: `;
+                }
+              } else if (result.Speaker) {
+                speakerLabel = `[דובר ${result.Speaker}]: `;
               }
             }
-
-            // Try alternative speaker label location if not found in Items
-            if (!speakerLabel && result.Speaker) {
-              speakerLabel = `דובר ${result.Speaker}`;
-            }
-
-            // Update current speaker if we have a new valid speaker
-            if (speakerLabel) {
-              currentSpeakerRef.current = speakerLabel;
-            }
-
-            // Format text with current speaker label
-            let formattedText = newText;
-            if (currentSpeakerRef.current && (!result.IsPartial || !partialTranscriptRef.current)) {
-              formattedText = `[${currentSpeakerRef.current}]: ${newText}`;
-            }
-
+  
+            // Update partial results more frequently
+            const now = Date.now();
+            const shouldUpdatePartial = now - lastPartialTimestamp > 100; // Update every 100ms
+  
             if (result.IsPartial) {
-              partialTranscriptRef.current = formattedText;
-              setTranscription(
-                [...completeTranscriptsRef.current, partialTranscriptRef.current]
-                  .filter(Boolean)
-                  .join('\n')
-              );
+              if (shouldUpdatePartial) {
+                currentTranscript = newText;
+                lastPartialTimestamp = now;
+                
+                // Immediately update UI with partial result
+                const displayText = [
+                  ...completeTranscriptsRef.current,
+                  speakerLabel + currentTranscript
+                ].filter(Boolean).join('\n');
+                
+                setTranscription(displayText);
+              }
             } else {
-              completeTranscriptsRef.current.push(formattedText);
-              partialTranscriptRef.current = '';
-              setTranscription(
-                completeTranscriptsRef.current
-                  .filter(Boolean)
-                  .join('\n')
-              );
+              // For final results
+              completeTranscriptsRef.current.push(speakerLabel + newText);
+              currentTranscript = ''; // Reset current transcript
+              
+              // Always update UI immediately for final results
+              const displayText = completeTranscriptsRef.current.join('\n');
+              setTranscription(displayText);
             }
           }
         }
@@ -398,7 +402,7 @@ const MedicalTranscription = () => {
     } finally {
       clearInterval(queueInterval);
     }
-  }, [isRecording]);
+  }, [isRecording, language, numSpeakers]);
 
   const startRecording = async () => {
     console.log('Starting recording...');
@@ -439,7 +443,7 @@ const MedicalTranscription = () => {
       await startTranscription(stream);
     } catch (error) {
       console.error('Recording error:', error);
-      // setError('Failed to start recording: ' + error.message);
+      // setError('Failed to start recording: ' + error.message); // Show error in console
     } finally {
       setIsProcessing(false);
     }
@@ -538,6 +542,14 @@ const MedicalTranscription = () => {
             <span className="block sm:inline">{error}</span>
           </div>
         )}
+
+        <TranscriptionConfig
+                  numSpeakers={numSpeakers}
+                  setNumSpeakers={setNumSpeakers}
+                  language={language}
+                  setLanguage={setLanguage}
+                  disabled={isRecording || isProcessing || uploadingFile}
+                />
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg mb-6">
           <button
