@@ -1,15 +1,15 @@
 {
   "dev": {
     "awscloudformation": {
-      "AuthRoleName": "amplify-transcriptionmed-dev-cab23-authRole",
-      "UnauthRoleArn": "arn:aws:iam::682766493838:role/amplify-transcriptionmed-dev-cab23-unauthRole",
-      "AuthRoleArn": "arn:aws:iam::682766493838:role/amplify-transcriptionmed-dev-cab23-authRole",
-      "Region": "us-east-1",
-      "DeploymentBucketName": "amplify-transcriptionmed-dev-cab23-deployment",
-      "UnauthRoleName": "amplify-transcriptionmed-dev-cab23-unauthRole",
+      "AuthRoleName": "role_transcribe_app ",
+      "UnauthRoleArn": "arn:aws:iam::311141555293:role/role_transcribe_app",
+      "AuthRoleArn": "arn:aws:iam::311141555293:role/role_transcribe_app",
+      "Region": "eu-central-1",
+      "DeploymentBucketName": "ai.hassah.frankfurt",
+      "UnauthRoleName": "role_transcribe_app ",
       "StackName": "amplify-transcriptionmed-dev-cab23",
       "StackId": "arn:aws:cloudformation:us-east-1:682766493838:stack/amplify-transcriptionmed-dev-cab23/6dd732c0-aa9a-11ef-a341-0ee16fdadd4d",
-      "AmplifyAppId": "d3bee10jira757"
+      "AmplifyAppId": "d3kthwajwiekb8"
     }
   }
 }
