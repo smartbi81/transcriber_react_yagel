@@ -7,7 +7,7 @@ const awsConfig = {
     },
     Storage: {
       AWSS3: {
-        bucket: 'product.transcriber',
+        bucket: 'ai.hadassah.frankfurt',
         region: process.env.REACT_APP_AWS_REGION || 'us-east-1'
       }
     }
