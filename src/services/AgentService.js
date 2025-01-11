@@ -327,7 +327,7 @@ export const aiAgentClean = async (sessionId, onProgress) => {
     };
 
     const command = new InvokeModelWithResponseStreamCommand({
-      modelId: "anthropic.claude-3-haiku-20240307-v1:0",
+      modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
       body: JSON.stringify(requestBody),
       contentType: "application/json",
       accept: "application/json",
@@ -485,7 +485,7 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
     console.log('Sending summary request to Bedrock...');
 
     const command = new InvokeModelWithResponseStreamCommand({
-      modelId: "anthropic.claude-3-haiku-20240307-v1:0",
+      modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
       body: JSON.stringify(requestBody),
       contentType: "application/json",
       accept: "application/json",
