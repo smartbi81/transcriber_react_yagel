@@ -434,6 +434,33 @@ async function getCleanedText(sessionId) {
   }
 }
 
+/**
+ * Helper function to retry Bedrock calls on ThrottlingException
+ */
+async function sendCommandWithRetry(bedrockClient, command, maxRetries = 3) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await bedrockClient.send(command);
+    } catch (error) {
+      // Check if it's a ThrottlingException
+      if (error.name === 'ThrottlingException') {
+        attempt++;
+        console.warn(`ThrottlingException encountered. Retrying attempt ${attempt} of ${maxRetries}...`);
+        if (attempt >= maxRetries) {
+          // If max retries reached, throw the error
+          throw error;
+        }
+        // Simple backoff: 2 seconds per attempt
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      } else {
+        // If it's not throttling, just throw
+        throw error;
+      }
+    }
+  }
+}
+
 export const aiAgentSummary = async (sessionId, onProgress) => {
   if (!sessionId) {
     throw new Error('No session ID provided');
@@ -493,6 +520,7 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
 
     console.log('Sending summary request to Bedrock...');
 
+    // Use the retry wrapper instead of a direct bedrockClient.send()
     const command = new InvokeModelWithResponseStreamCommand({
       modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
       body: JSON.stringify(requestBody),
@@ -500,7 +528,8 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
       accept: "application/json",
     });
 
-    const response = await bedrockClient.send(command);
+    // This call will retry automatically on ThrottlingException
+    const response = await sendCommandWithRetry(bedrockClient, command);
     let fullResponse = '';
     
     try {
