@@ -317,7 +317,7 @@ export const aiAgentClean = async (sessionId, onProgress) => {
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 3000,
       temperature: 0,
-      system: 'אתה אפליקציית תמלול מקצועית. קיבלת קטע טקסט עם דוברים ותפקידך לבצע את המשימות הבאות:
+      system: `אתה אפליקציית תמלול מקצועית. קיבלת קטע טקסט עם דוברים ותפקידך לבצע את המשימות הבאות:
 
 
     ניקוי שגיאות: נקה את הטקסט משגיאות כתיב, טעויות דקדוקיות ומילים חוזרות. ודא שהמשפטים זורמים בצורה טבעית.
@@ -333,7 +333,7 @@ export const aiAgentClean = async (sessionId, onProgress) => {
     תרשום ישירות את הטקסט המתוקן ואל תרשום לי כל פעם שאתה משנה משהו
     
 
-',
+`,
       messages: [
         {
           role: "user",
