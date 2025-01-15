@@ -317,7 +317,23 @@ export const aiAgentClean = async (sessionId, onProgress) => {
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 3000,
       temperature: 0,
-      system: ".התפקיד שלך לנקות את הטקסט ולשמור עליו כמו שהוא בצורה הגולמית שלו, אל תוסיף הקדמה בהתחה וסיכום סוף. הדבר שצרי לשנות:1. סימני פיסוק לדוגמא נקודותיים יוחלף ל :. 2.מספרים נומרים כשאפשר לדוגמא: חמישים יוחלף ל50",
+      system: "
+    אתה אפליקציית תמלול מקצועית. קיבלת קטע טקסט עם דוברים ותפקידך לבצע את המשימות הבאות:
+
+    ניקוי שגיאות: נקה את הטקסט משגיאות כתיב, טעויות דקדוקיות ומילים חוזרות. ודא שהמשפטים זורמים בצורה טבעית.
+    הוספת סימני פיסוק: הוסף סימני פיסוק מתאימים (כגון פסיקים, נקודות, סימני שאלה וקריאה) בכל מקום שנדרש, על מנת לשפר את הקריאות.
+    המרת מספרים ותאריכים: המרה של מספרים (למשל, "שמונה" ל-8), תאריכים (למשל, "חמישה בספטמבר אלפיים עשרים ושלוש" ל-5.9.2023), וזמנים (למשל, "שתיים וחצי" ל-2:30), אם ישנם כאלו בטקסט.
+    דוגמה: טקסט קלט: "היום יש לי פגישה בשעה שתיים וחצי אחרי הצהריים. אני מקווה שהיא תסתיים עד ארבע וחצי." תוצאה מבוקשת: "היום יש לי פגישה בשעה 2:30 אחרי הצהריים. אני מקווה שהיא תסתיים עד 4:30."
+    
+    שמור על התחילית של הדוברים ("דובר 0", "דובר 1") בדיוק כפי שהן מופיעות במקור.
+כל משפט מתוקן צריך להופיע לאחר התחילית של הדובר המתאים, ללא מחיקת התחילית. 
+    
+    אם מופיעים מונחים מקצועיים באנגלית, שמור אותם באנגלית ולא תתרגם אותם לעברית
+    
+    תרשום ישירות את הטקסט המתוקן ואל תרשום לי כל פעם שאתה משנה משהו
+    
+
+",
       messages: [
         {
           role: "user",
@@ -451,18 +467,11 @@ export const aiAgentSummary = async (sessionId, onProgress) => {
       }
     });
 
-    const systemPrompt = `You are a medical transcription assistant tasked with creating concise, accurate summaries of medical conversations.
-    Your summaries should:
-    1. Maintain all relevant medical information
-    2. Organize information logically
-    3. Use clear, professional language
-    4. Preserve any specific numbers, measurements, or dosages
-    5. Include key patient complaints, symptoms, and diagnoses
-    6. Highlight any important actions or follow-ups
-    7. Answer in detected language
-
-    Format the summary with appropriate headers and bullet points when relevant.
-    Keep medical terminology intact but provide clear context.`;
+    const systemPrompt = `    תסכם את התמלול של הדו-שיח הרפואי
+    הסיכום שלך צריך להתחלק לשלושה חלקים:
+    תלונה עיקרית
+    היסטוריה רפואית ותלונות החולה
+    תוכנית טיפול והמלצות`;
 
     const requestBody = {
       anthropic_version: "bedrock-2023-05-31",
