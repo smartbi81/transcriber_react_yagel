@@ -437,7 +437,7 @@ async function getCleanedText(sessionId) {
 /**
  * Helper function to retry Bedrock calls on ThrottlingException
  */
-async function sendCommandWithRetry(bedrockClient, command, maxRetries = 3) {
+async function sendCommandWithRetry(bedrockClient, command, maxRetries = 30) {
   let attempt = 0;
   while (attempt < maxRetries) {
     try {
