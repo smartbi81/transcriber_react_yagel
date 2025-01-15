@@ -59,7 +59,7 @@ const MedicalTranscription = () => {
       
     } catch (error) {
       console.error('Error cleaning text:', error);
-      setError('שגיאה בניקוי הטקסט');
+      // Removed: setError('שגיאה בניקוי הטקסט');
     } finally {
       setIsProcessingAI(false);
     }
@@ -83,7 +83,7 @@ const MedicalTranscription = () => {
       
     } catch (error) {
       console.error('Error generating summary:', error);
-      setError('שגיאה ביצירת סיכום');
+      // Removed: setError('שגיאה ביצירת סיכום');
     } finally {
       setIsProcessingAI(false);
     }
