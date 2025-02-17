@@ -38,7 +38,6 @@ const MedicalTranscription = () => {
 
   const [isProcessingAI, setIsProcessingAI] = useState(false);
 
-  const [numSpeakers, setNumSpeakers] = useState(1);
   const [language, setLanguage] = useState('he-IL');
 
   // -- New state to hold + edit the generated summary text --
@@ -353,9 +352,10 @@ const MedicalTranscription = () => {
         LanguageCode: language,
         MediaEncoding: 'pcm',
         MediaSampleRateHertz: 16000,
-        EnableSpeakerIdentification: numSpeakers > 1,
-        NumberOfParticipants: numSpeakers,
-        ShowSpeakerLabel: numSpeakers > 1,
+        // Always enable speaker identification with a default maximum of 5 speakers.
+        EnableSpeakerIdentification: true,
+        NumberOfParticipants: 2, 
+        ShowSpeakerLabel: true,
         EnablePartialResultsStabilization: true,
         PartialResultsStability: 'low',
         VocabularyName: 'transcriber-he-punctuation',
@@ -392,15 +392,13 @@ const MedicalTranscription = () => {
             
             // Handle speaker labels
             let speakerLabel = '';
-            if (numSpeakers > 1) {
-              if (alternative.Items?.length > 0) {
-                const speakerItem = alternative.Items.find(item => item.Speaker);
-                if (speakerItem) {
-                  speakerLabel = `[דובר ${speakerItem.Speaker}]: `;
-                }
-              } else if (result.Speaker) {
-                speakerLabel = `[דובר ${result.Speaker}]: `;
+            if (alternative.Items?.length > 0) {
+              const speakerItem = alternative.Items.find(item => item.Speaker);
+              if (speakerItem) {
+                speakerLabel = `[דובר ${speakerItem.Speaker}]: `;
               }
+            } else if (result.Speaker) {
+              speakerLabel = `[דובר ${result.Speaker}]: `;
             }
   
             // Update partial results more frequently
@@ -438,7 +436,7 @@ const MedicalTranscription = () => {
     } finally {
       clearInterval(queueInterval);
     }
-  }, [isRecording, language, numSpeakers]);
+  }, [isRecording, language]);
 
   const startRecording = async () => {
     console.log('Starting recording...');
@@ -579,8 +577,6 @@ const MedicalTranscription = () => {
         )}
 
         <TranscriptionConfig
-          numSpeakers={numSpeakers}
-          setNumSpeakers={setNumSpeakers}
           language={language}
           setLanguage={setLanguage}
           disabled={isRecording || isProcessing || uploadingFile}
