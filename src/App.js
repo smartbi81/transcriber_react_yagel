@@ -555,9 +555,9 @@ const MedicalTranscription = () => {
   }, [sessionId, transcription]);
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-4 md:p-6">
-        <div className="flex justify-between items-center border-b-2 border-blue-300 pb-4 mb-6">
+    <div className="app-container">
+      <div className="content-container">
+        <div className="app-header flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <img 
               src="https://upload.wikimedia.org/wikipedia/he/thumb/4/40/HadassahHospital2024.svg/512px-HadassahHospital2024.svg.png" 
@@ -565,7 +565,7 @@ const MedicalTranscription = () => {
               className="h-10 object-contain"
             />
           </div>
-          <h1 className="text-2xl md:text-3xl text-blue-800 text-right">
+          <h1 className="text-2xl md:text-3xl text-gray-800 text-right">
             👨‍⚕️ מערכת תמלול חכמה
           </h1>
         </div>
@@ -582,7 +582,7 @@ const MedicalTranscription = () => {
           disabled={isRecording || isProcessing || uploadingFile}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg mb-6">
+        <div className="control-panel">
           <button
             onClick={startRecording}
             disabled={isRecording || isProcessing || uploadingFile}
@@ -731,7 +731,7 @@ const MedicalTranscription = () => {
 
           {/* -- New editable summary area (visible once summary is generated) -- */}
           {editedSummary && (
-            <div className="bg-gray-50 p-4 rounded-lg shadow">
+            <div className="bg-white/80 backdrop-blur p-4 rounded-xl shadow">
               <label className="block mb-2 text-gray-700 font-bold text-right">
                 עריכת טקסט מסוכם:
               </label>
