@@ -556,6 +556,14 @@ const MedicalTranscription = () => {
 
   return (
     <div className="app-container">
+      <div className="sidebar">
+        <h2 className="text-xl font-bold mb-4 text-right">תפריט</h2>
+        <ul className="space-y-2 text-right">
+          <li className="nav-item">דף הבית</li>
+          <li className="nav-item">התמלולים שלי</li>
+          <li className="nav-item">הגדרות</li>
+        </ul>
+      </div>
       <div className="content-container">
         <div className="app-header flex justify-between items-center">
           <div className="flex items-center space-x-4">
