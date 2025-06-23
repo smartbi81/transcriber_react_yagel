@@ -20,7 +20,7 @@
 
   /* Add any custom styles here */
   .app-container {
-    @apply min-h-screen bg-blue-50 p-4 md:p-8;
+    @apply min-h-screen bg-gray-900 p-4 md:p-8;
   }
 
   .content-container {

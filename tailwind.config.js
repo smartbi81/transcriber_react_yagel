@@ -76,6 +76,7 @@ module.exports = {
       'space-y-4',
       
       // Backgrounds
+      'bg-gray-900',
       'bg-blue-50',
       'bg-blue-700',
       'bg-white',

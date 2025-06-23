@@ -555,7 +555,7 @@ const MedicalTranscription = () => {
   }, [sessionId, transcription]);
 
   return (
-    <div className="min-h-screen bg-blue-50 p-4 md:p-8">
+    <div className="min-h-screen bg-gray-900 p-4 md:p-8">
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-4 md:p-6">
         <div className="flex justify-between items-center border-b-2 border-blue-300 pb-4 mb-6">
           <div className="flex items-center space-x-4">
